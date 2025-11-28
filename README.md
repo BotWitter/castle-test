@@ -1,9 +1,11 @@
 ## x/twitter Castle Test
 
-API access: 100 req/sec, 30,000/hour 35$ monthly
-
-API access: 50 req/sec, 15,000/hour  20$ monthly
-
+## Price
+```
+100 req/sec, 30,000/hour 50$ monthly
+35 req/sec, 15,000/hour  25$ monthly 
+10 req/sec, 10,000/hour 10$ monthly
+```
 Endpoint:   `castle.botwitter.com/generate-token`
 
 https://discord.gg/5Th3puHagr
