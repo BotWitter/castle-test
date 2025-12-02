@@ -248,68 +248,83 @@ class LoginFlowOrchestrator:
                 self.logger.error("Flow token not available")
                 return False
 
-            # Generate Castle token
-            castle_token = self.castle_generator.get_token()
-            if not castle_token:
-                self.logger.error("Failed to generate Castle token")
-                return False
+            # Retry loop for submitting user identifier
+            max_retries = 3
+            for attempt in range(max_retries):
+                # Generate Castle token (force new token on retries)
+                if attempt > 0:
+                    self.logger.info(f"Retry attempt {attempt + 1}/{max_retries}: Generating new Castle token...")
+                    # Force new token generation by bypassing cache check if possible, 
+                    # or just calling generate_token directly if the method is exposed.
+                    # Looking at CastleTokenGenerator, generate_token() is public.
+                    castle_token = self.castle_generator.generate_token()
+                else:
+                    castle_token = self.castle_generator.get_token()
 
-            # Prepare payload
-            payload = {
-                "flow_token": self.flow_token,
-                "subtask_inputs": [
-                    {
-                        "subtask_id": "LoginEnterUserIdentifierSSO",
-                        "settings_list": {
-                            "setting_responses": [
-                                {
-                                    "key": "user_identifier",
-                                    "response_data": {
-                                        "text_data": {
-                                            "result": username,
-                                        }
-                                    },
-                                }
-                            ],
-                            "link": "next_link",
-                            "castle_token": castle_token,
-                        },
-                    }
-                ],
-            }
+                if not castle_token:
+                    self.logger.error("Failed to generate Castle token")
+                    if attempt == max_retries - 1:
+                        return False
+                    continue
 
-            xpff_encrypted = self.xpff_generator.generate_xpff(
-                json.dumps({"navigator_properties": {
-                    "hasBeenActive": "true",
-                    "userAgent": self.auth_config.user_agent,
-                    "webdriver": "false",
-                }}),
-                self.guest_id,
-            )
+                # Prepare payload
+                payload = {
+                    "flow_token": self.flow_token,
+                    "subtask_inputs": [
+                        {
+                            "subtask_id": "LoginEnterUserIdentifierSSO",
+                            "settings_list": {
+                                "setting_responses": [
+                                    {
+                                        "key": "user_identifier",
+                                        "response_data": {
+                                            "text_data": {
+                                                "result": username,
+                                            }
+                                        },
+                                    }
+                                ],
+                                "link": "next_link",
+                                "castle_token": castle_token,
+                            },
+                        }
+                    ],
+                }
 
-            headers = RequestsHeaders.get_api_headers(
-                user_agent=self.auth_config.user_agent,
-                bearer_token=self.auth_config.bearer_token,
-                guest_token=self.guest_token,
-                xpff_header=xpff_encrypted,
-                transaction_id=self._generate_transaction_id(),
-            )
-
-            response = self.http_client.client.post(
-                APIEndpoints.ONBOARDING_TASK,
-                headers=headers,
-                data=json.dumps(payload, separators=(",", ":")),
-            )
-
-            if response.status_code == 200:
-                self.logger.info(f"✓ User identifier submitted (Status: 200)")
-                return True
-            else:
-                self.logger.error(
-                    f"Failed to submit user identifier (Status: {response.status_code})"
+                xpff_encrypted = self.xpff_generator.generate_xpff(
+                    json.dumps({"navigator_properties": {
+                        "hasBeenActive": "true",
+                        "userAgent": self.auth_config.user_agent,
+                        "webdriver": "false",
+                    }}),
+                    self.guest_id,
                 )
-                self.logger.debug(f"Response: {response.text}")
-                return False
+
+                headers = RequestsHeaders.get_api_headers(
+                    user_agent=self.auth_config.user_agent,
+                    bearer_token=self.auth_config.bearer_token,
+                    guest_token=self.guest_token,
+                    xpff_header=xpff_encrypted,
+                    transaction_id=self._generate_transaction_id(),
+                )
+
+                response = self.http_client.client.post(
+                    APIEndpoints.ONBOARDING_TASK,
+                    headers=headers,
+                    data=json.dumps(payload, separators=(",", ":")),
+                )
+
+                if response.status_code == 200:
+                    self.logger.info(f"✓ User identifier submitted (Status: 200)")
+                    return True
+                else:
+                    self.logger.warning(
+                        f"Failed to submit user identifier (Status: {response.status_code}, Attempt: {attempt + 1}/{max_retries})"
+                    )
+                    self.logger.debug(f"Response: {response.text}")
+            
+            self.logger.error("Failed to submit user identifier after all retries")
+            return False
         except Exception as e:
             self.logger.error(f"Step 4 failed: {e}")
             return False
