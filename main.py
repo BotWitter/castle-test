@@ -130,6 +130,9 @@ def main() -> int:
         if args.api_key:
             login_flow.castle_generator.api_key = args.api_key
             logger.info("Using custom API key for Castle token generation")
+        else:
+            logger.warning("No API key provided for Castle token generation, --api-key <api_key> required")
+            return 1
 
         # Execute login flow
         success = login_flow.execute_login_flow(args.username)
