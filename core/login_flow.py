@@ -179,15 +179,6 @@ class LoginFlowOrchestrator:
                     {
                         "subtask_id": "LoginJsInstrumentationSubtask",
                         "js_instrumentation": {
-                            "response": json.dumps({
-                                "rf": {
-                                    "a936fafa6cfd8202f09b567899c51612b7d30988859e748fe6c46b4673f145af": 7,
-                                    "afa4f9b3f6903b6940c5b4c3686de73feb8ebcec5d39b7cd5f778397bdd8af02": 0,
-                                    "a24857ae70f173a2c9aa83f2302c75957e38970b12c3d517edea6b766f0c8c57": 0,
-                                    "d9cd75556906d90d377a7bd862adb0bb6c332902a7c65f83fa8a7734368d5185": -238,
-                                },
-                                "s": "559pFstyTd4CwueiAS_hrsdrXwumoF-s7m_QeYEam0oRTQL9p13Qn93er2rC4Fdm9fT4-AUfM8bQLm9A75DUkLPVzXYtP1iSkwFRwy0Q5U1YAabIfMdm6Zw9dvhF7_IClU10JgC7tqBjT_6iSgaPzdNWFoTO1gnYod1FiIfWHwQF4DI7lpsf90ZhyJg0fjN70sAf94DgiJYyQUxF3EYaXfM05DDsa80AsNmr945WZW0A5yfQB9SyyQW0m3HkYGA7ne85l1qtY9XFK40N9AVnNV6IV-zqrCNT3Q196wllYwr3wPeeVrE6WjuGYsjbnYJI8TA3Qd8frl29Vv91kYMrfgAAAZp3SiVN",
-                            }),
                             "link": "next_link",
                         },
                     }
