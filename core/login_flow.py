@@ -5,8 +5,22 @@ Manages the multi-step authentication process.
 
 import json
 import logging
+import sys
+import importlib
 import time
+from pathlib import Path
 from typing import Optional, Dict, Any
+from urllib.parse import urlparse
+
+import bs4
+
+# Add parent directory to path to import ui-metrics and x_client_transaction
+sys.path.insert(0, str(Path(__file__).parent.parent))
+ui_metrics_module = importlib.import_module('ui-metrics')
+solve_ui_metrics = ui_metrics_module.solve_ui_metrics
+
+from x_client_transaction import ClientTransaction
+from x_client_transaction.utils import get_ondemand_file_url
 
 from .castle_token import CastleTokenGenerator
 from .config import (
@@ -48,6 +62,8 @@ class LoginFlowOrchestrator:
         self.guest_id: Optional[str] = None
         self.guest_token: Optional[str] = None
         self.flow_token: Optional[str] = None
+        self.home_page_response: Optional[bs4.BeautifulSoup] = None
+        self.client_transaction: Optional[ClientTransaction] = None
         self.xpff_generator = XPFFHeaderGenerator(self.encryption_config.base_key)
         self.castle_generator = CastleTokenGenerator(
             http_client.client,
@@ -61,6 +77,7 @@ class LoginFlowOrchestrator:
     def step_1_fetch_login_page(self) -> bool:
         """
         Step 1: Fetch login page to get guest ID and token.
+        Also fetches x.com home page and ondemand.s file for transaction ID generation.
 
         Returns:
             True if successful, False otherwise
@@ -83,9 +100,33 @@ class LoginFlowOrchestrator:
 
             self.logger.info(f"✓ Guest ID: {self.guest_id}")
             self.logger.info(f"✓ Guest Token: {self.guest_token[:20]}...")
+
+            # Fetch x.com home page for ClientTransaction initialization
+            self.logger.info("Fetching x.com home page for transaction ID generation...")
+            home_page = self.http_client.client.get(url="https://x.com")
+            self.home_page_response = bs4.BeautifulSoup(home_page.text, 'html.parser')
+
+            # Fetch ondemand.s file
+            ondemand_file_url = get_ondemand_file_url(response=self.home_page_response)
+            if not ondemand_file_url:
+                self.logger.error("Failed to get ondemand.s file URL")
+                return False
+
+            self.logger.info(f"Fetching ondemand.s file: {ondemand_file_url}")
+            ondemand_file = self.http_client.client.get(url=ondemand_file_url)
+            ondemand_file_response = ondemand_file.text
+
+            # Initialize ClientTransaction
+            self.client_transaction = ClientTransaction(
+                home_page_response=self.home_page_response,
+                ondemand_file_response=ondemand_file_response
+            )
+            self.logger.info("✓ ClientTransaction initialized successfully")
             return True
         except Exception as e:
             self.logger.error(f"Step 1 failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def step_2_initialize_flow(self) -> bool:
@@ -172,13 +213,16 @@ class LoginFlowOrchestrator:
                 self.logger.error("Flow token not available")
                 return False
 
-            # Prepare instrumentation response
+            ui_metrics_js = self.http_client.client.get('https://twitter.com/i/js_inst?c_name=ui_metrics').text
+            ui_metrics_response = solve_ui_metrics(ui_metrics_js)
+            
             payload = {
                 "flow_token": self.flow_token,
                 "subtask_inputs": [
                     {
                         "subtask_id": "LoginJsInstrumentationSubtask",
                         "js_instrumentation": {
+                            "response": ui_metrics_response,
                             "link": "next_link",
                         },
                     }
@@ -239,7 +283,6 @@ class LoginFlowOrchestrator:
                 self.logger.error("Flow token not available")
                 return False
 
-            # Retry loop for submitting user identifier
             max_retries = 3
             for attempt in range(max_retries):
                 # Generate Castle token (force new token on retries)
@@ -303,12 +346,16 @@ class LoginFlowOrchestrator:
                     APIEndpoints.ONBOARDING_TASK,
                     headers=headers,
                     data=json.dumps(payload, separators=(",", ":")),
-                )
 
+
+                )
+                print(response.text)
                 if response.status_code == 200:
+                    
                     self.logger.info(f"✓ User identifier submitted (Status: 200)")
                     return True
                 else:
+                    
                     self.logger.warning(
                         f"Failed to submit user identifier (Status: {response.status_code}, Attempt: {attempt + 1}/{max_retries})"
                     )
@@ -351,8 +398,19 @@ class LoginFlowOrchestrator:
         self.logger.info("=" * 50)
         return True
 
-    @staticmethod
-    def _generate_transaction_id() -> str:
-        """Generate a random transaction ID."""
-        import secrets
-        return secrets.token_urlsafe(32)
+    def _generate_transaction_id(self, method: str = "POST", path: str = "/1.1/onboarding/task.json") -> str:
+        """
+        Generate a valid X-Client-Transaction-Id using ClientTransaction.
+        
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            path: API endpoint path
+            
+        Returns:
+            Transaction ID string
+        """
+        if self.client_transaction:
+            return self.client_transaction.generate_transaction_id(method=method, path=path)
+        else:
+            self.logger.warning("ClientTransaction not initialized, returning empty transaction ID")
+            return ""

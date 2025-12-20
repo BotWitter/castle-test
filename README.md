@@ -64,3 +64,7 @@ python main.py myusername
 # With authenticated proxy
 python main.py myemail@example.com --proxy http://user:pass@proxy.example.com:8080
 ```
+
+## Credits
+
+[XClientTransaction](https://github.com/iSarabjitDhiman/XClientTransaction)
